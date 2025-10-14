@@ -13,8 +13,8 @@
             background-color: #f7f9fc;
         }
         .input-focus:focus {
-            border-color: #10b981; /* Emerald green focus */
-            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.5);
+            border-color: #f97316; /* Orange focus for branding */
+            box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.5);
         }
         #message-box { display: none; }
     </style>
@@ -23,7 +23,8 @@
 
     <!-- Calculator Container -->
     <div class="w-full max-w-md bg-white shadow-2xl rounded-xl p-6 sm:p-8 space-y-6">
-        <h1 class="text-2xl sm:text-3xl font-bold text-gray-800 text-center mb-2">Premier Credit Government Payroll Calculator</h1>
+        <!-- UPDATED HEADER -->
+        <h1 class="text-2xl sm:text-3xl font-bold text-gray-800 text-center mb-2">Premier Credit CS Calculator</h1>
         <p class="text-sm text-gray-500 text-center mb-6">Calculate your total monthly payment based on the loan amount, term, and applicable fees.</p>
 
         <!-- Input Form -->
@@ -53,8 +54,9 @@
 
         <!-- Button Group -->
         <div class="flex space-x-4">
+            <!-- UPDATED BUTTON STYLE TO ORANGE -->
             <button id="calculateBtn"
-                    class="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-3 rounded-lg shadow-md transition duration-200 ease-in-out transform hover:scale-[1.01] flex items-center justify-center">
+                    class="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-semibold py-3 rounded-lg shadow-md transition duration-200 ease-in-out transform hover:scale-[1.01] flex items-center justify-center">
                 Calculate Monthly Deduction
             </button>
             <button id="clearBtn"
@@ -79,9 +81,14 @@
             </div>
             
         </div>
+        
+        <!-- NEW FOOTER TAGLINE -->
+        <div class="text-sm text-indigo-700 text-center pt-4 font-semibold border-t border-gray-100 mt-4">
+            Your Premier Choice...in Credit
+        </div>
 
         <!-- User ID display for required Firebase setup -->
-        <div class="text-xs text-gray-400 text-center pt-4">
+        <div class="text-xs text-gray-400 text-center pt-2">
             User ID: <span id="userIdDisplay">Loading...</span>
         </div>
     </div>
