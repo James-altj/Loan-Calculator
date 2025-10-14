@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Loan Repayment Calculator</title>
+    <!-- Load Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f9fc;
+        }
+        .input-focus:focus {
+            border-color: #10b981; /* Emerald green focus */
+            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.5);
+        }
+        #message-box { display: none; }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+
+    <!-- Calculator Container -->
+    <div class="w-full max-w-md bg-white shadow-2xl rounded-xl p-6 sm:p-8 space-y-6">
+        <h1 class="text-2xl sm:text-3xl font-bold text-gray-800 text-center mb-2">Government Payroll Calculator for Civil Servants</h1>
+        <p class="text-sm text-gray-500 text-center mb-6">Calculate your total monthly payment based on the loan amount, term, and applicable fees.</p>
+
+        <!-- Input Form -->
+        <div class="space-y-5">
+            <!-- Loan Amount Input (Principal) -->
+            <div>
+                <label for="loanPrincipal" class="block text-sm font-medium text-gray-700 mb-1">
+                    Loan Amount to Borrow (KES)
+                    <span class="text-xs text-gray-400">(Min: 2,500 KES, Max: 1,200,000 KES)</span>
+                </label>
+                <input type="number" id="loanPrincipal" value="10000" min="2500" max="1200000" step="1000"
+                       class="w-full px-4 py-3 border border-gray-300 rounded-lg input-focus transition duration-150 ease-in-out text-lg"
+                       placeholder="Min: 2,500 KES">
+            </div>
+
+            <!-- Loan Term (Months) -->
+            <div>
+                <label for="loanTerm" class="block text-sm font-medium text-gray-700 mb-1">
+                    Loan Term (Months)
+                    <span class="text-xs text-gray-400">(Between 1 and 120 months)</span>
+                </label>
+                <input type="number" id="loanTerm" value="12" min="1" max="120" step="1"
+                       class="w-full px-4 py-3 border border-gray-300 rounded-lg input-focus transition duration-150 ease-in-out text-lg"
+                       placeholder="Min: 1 Month">
+            </div>
+        </div>
+
+        <!-- Button Group -->
+        <div class="flex space-x-4">
+            <button id="calculateBtn"
+                    class="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-3 rounded-lg shadow-md transition duration-200 ease-in-out transform hover:scale-[1.01] flex items-center justify-center">
+                Calculate Monthly Deduction
+            </button>
+            <button id="clearBtn"
+                    class="w-1/4 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-3 rounded-lg shadow-md transition duration-200 ease-in-out transform hover:scale-[1.01] flex items-center justify-center">
+                Clear
+            </button>
+        </div>
+
+        <!-- Message/Error Box -->
+        <div id="message-box" class="p-3 rounded-lg text-sm transition-all duration-300" role="alert">
+            <!-- Content filled by JS (only shows errors now) -->
+        </div>
+
+        <!-- Results Display -->
+        <div id="results" class="space-y-4 pt-6 border-t border-gray-200 mt-6" style="display: none;">
+            <h2 class="text-xl font-semibold text-gray-800 text-center">Your Required Monthly Deduction</h2>
+
+            <!-- Monthly Deduction Result -->
+            <div class="bg-indigo-100 p-6 rounded-xl text-center shadow-inner">
+                <span class="text-lg font-medium text-indigo-700 block">Total Monthly Payment</span>
+                <span id="monthlyDeductionResult" class="text-5xl font-extrabold text-indigo-800 mt-2 block">KES 0.00</span>
+            </div>
+            
+        </div>
+
+        <!-- User ID display for required Firebase setup -->
+        <div class="text-xs text-gray-400 text-center pt-4">
+            User ID: <span id="userIdDisplay">Loading...</span>
+        </div>
+    </div>
+
+    <script type="module">
+        // Standard Firebase imports (required boilerplate, calculation runs locally)
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global variables provided by the environment
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let app;
+        let auth;
+        let db;
+        let currentUserId = 'anonymous';
+
+        // --- Constants & Constraints ---
+        const MIN_LOAN_AMOUNT = 2500;
+        const MAX_LOAN_AMOUNT = 1200000;
+        const FIXED_MONTHLY_FEE = 240;
+        // 12.5% one-off fee
+        const ONE_OFF_FEE_RATE = 0.125; 
+        const MIN_MONTHLY_COMMITMENT = 500; 
+
+        // UPDATED: Annual Interest Rates (as decimals) based on term ranges up to 120 months
+        const RATE_TIERS = [
+            // Max term is inclusive.
+            { maxMonths: 12, rate: 1.06248, rateText: '106.248%' },  // 1 to 12 months
+            { maxMonths: 24, rate: 0.860136, rateText: '86.0136%' }, // 13 to 24 months
+            { maxMonths: 36, rate: 0.704984, rateText: '70.4984%' }, // 25 to 36 months
+            { maxMonths: 48, rate: 0.55688, rateText: '55.688%' },   // 37 to 48 months
+            { maxMonths: 60, rate: 0.519275, rateText: '51.9275%' }, // 49 to 60 months
+            { maxMonths: 84, rate: 0.462562, rateText: '46.2562%' }, // 61 to 84 months
+            { maxMonths: 96, rate: 0.452381, rateText: '45.2381%' }, // 85 to 96 months
+            { maxMonths: 108, rate: 0.4195, rateText: '41.95%' },    // 97 to 108 months
+            { maxMonths: 120, rate: 0.4122, rateText: '41.22%' }     // 109 to 120 months
+        ];
+
+        // --- Firebase Initialization and Auth (Boilerplate) ---
+        async function initializeFirebase() {
+            try {
+                if (Object.keys(firebaseConfig).length > 0) {
+                    app = initializeApp(firebaseConfig);
+                    auth = getAuth(app);
+                    db = getFirestore(app);
+                    setLogLevel('Debug'); 
+
+                    if (initialAuthToken) {
+                        await signInWithCustomToken(auth, initialAuthToken);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+
+                    onAuthStateChanged(auth, (user) => {
+                        if (user) {
+                            currentUserId = user.uid;
+                            document.getElementById('userIdDisplay').textContent = currentUserId;
+                        } else {
+                            currentUserId = 'unauthenticated';
+                            document.getElementById('userIdDisplay').textContent = currentUserId;
+                        }
+                    });
+                } else {
+                    document.getElementById('userIdDisplay').textContent = 'N/A (No Config)';
+                }
+            } catch (error) {
+                console.error("Error during Firebase initialization or sign-in:", error);
+                showMessage('An error occurred during authentication. Check console for details.', 'error');
+            }
+        }
+
+        // --- Utility Functions ---
+
+        /**
+         * Shows a message box with styling.
+         */
+        function showMessage(message, type) {
+            const msgBox = document.getElementById('message-box');
+            msgBox.textContent = message;
+            msgBox.style.display = 'block';
+
+            if (type === 'error') {
+                msgBox.className = 'p-3 rounded-lg text-sm bg-red-100 text-red-700 transition-all duration-300';
+            } else {
+                msgBox.className = 'p-3 rounded-lg text-sm bg-emerald-100 text-emerald-700 transition-all duration-300';
+            }
+        }
+
+        /**
+         * Hides the message box.
+         */
+        function hideMessage() {
+            document.getElementById('message-box').style.display = 'none';
+        }
+
+        /**
+         * Resets input fields and clears results display.
+         */
+        function clearForm() {
+            document.getElementById('loanPrincipal').value = '';
+            document.getElementById('loanTerm').value = '';
+            document.getElementById('results').style.display = 'none';
+            document.getElementById('message-box').style.display = 'none';
+            // Set focus back to the first input for convenience
+            document.getElementById('loanPrincipal').focus(); 
+        }
+
+        /**
+         * Formats a number into a Kenyan Shilling currency string.
+         * @param {number} num The number to format.
+         * @returns {string} The formatted currency string.
+         */
+        function formatCurrency(num) {
+            return new Intl.NumberFormat('en-KE', {
+                style: 'currency',
+                currency: 'KES',
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+            }).format(num);
+        }
+
+        // --- Core Calculator Logic ---
+
+        /**
+         * Calculates the required Monthly Deduction based on the loan principal, term, and fees.
+         */
+        function calculateMonthlyDeduction() {
+            hideMessage();
+
+            const P_input = document.getElementById('loanPrincipal');
+            const n_input = document.getElementById('loanTerm');
+
+            const P = parseFloat(P_input.value); // Original Loan Principal (KES)
+            const n = parseInt(n_input.value, 10); // Loan Term (Months)
+
+            const resultsDiv = document.getElementById('results');
+            const monthlyDeductionResult = document.getElementById('monthlyDeductionResult');
+
+
+            // --- 1. Validation ---
+            if (isNaN(P) || P < MIN_LOAN_AMOUNT || P > MAX_LOAN_AMOUNT || isNaN(n) || n < 1 || n > 120) {
+                resultsDiv.style.display = 'none';
+                showMessage(`Please enter a loan amount between ${formatCurrency(MIN_LOAN_AMOUNT)} and ${formatCurrency(MAX_LOAN_AMOUNT)} and a term between 1 and 120 months.`, 'error');
+                return;
+            }
+
+            // --- 2. Determine Rate (R) ---
+            let R = 0;
+            let rateFound = false;
+            
+            // Loop through the new RATE_TIERS array to find the correct rate
+            for (const tier of RATE_TIERS) {
+                if (n <= tier.maxMonths) {
+                    R = tier.rate;
+                    rateFound = true;
+                    break;
+                }
+            }
+
+            if (!rateFound) {
+                 resultsDiv.style.display = 'none';
+                 showMessage(`The loan term must be between 1 and 120 months.`, 'error');
+                 return;
+            }
+
+
+            // --- 3. Calculate Monthly Interest Rate (i) ---
+            const i = R / 12; // Monthly Interest Rate (as a decimal)
+
+            // --- 4. Calculate New Amortization Principal (P_amort) ---
+            const totalOneOffFee = P * ONE_OFF_FEE_RATE;
+            // The one-off fee is CAPITALIZED (added to the principal)
+            const P_amort = P + totalOneOffFee; 
+
+            // --- 5. Calculate Amortization Payment (M_amort) based on the NEW PRINCIPAL (P_amort) ---
+            let M_amort = 0;
+            if (i > 0) {
+                 // M = P_amort * [ i(1 + i)^n / ((1 + i)^n - 1) ]
+                const termFactor = Math.pow(1 + i, n);
+                M_amort = P_amort * (i * termFactor) / (termFactor - 1);
+            } else {
+                // Zero interest loan (unlikely but safe fallback)
+                M_amort = P_amort / n;
+            }
+            
+            // --- 6. Calculate Total Monthly Deduction (M_total) ---
+            // M_total = Amortization Payment (covers new principal + interest) + Fixed Monthly Fee
+            const M_total = M_amort + FIXED_MONTHLY_FEE;
+
+            // --- 7. Display Results ---
+            monthlyDeductionResult.textContent = formatCurrency(M_total);
+            resultsDiv.style.display = 'block';
+        }
+
+        // --- Event Listeners and Initial Setup ---
+        window.onload = function () {
+            initializeFirebase(); // Initialize Firebase boilerplate
+
+            const calculateBtn = document.getElementById('calculateBtn');
+            const clearBtn = document.getElementById('clearBtn'); 
+
+            calculateBtn.addEventListener('click', calculateMonthlyDeduction); 
+            clearBtn.addEventListener('click', clearForm); // Clear button listener
+
+            // Calculate when input values change
+            document.getElementById('loanPrincipal').addEventListener('input', calculateMonthlyDeduction);
+            document.getElementById('loanTerm').addEventListener('input', calculateMonthlyDeduction); 
+
+            // Run initial calculation with default values
+            calculateMonthlyDeduction(); 
+        };
+
+    </script>
+</body>
+</html>
